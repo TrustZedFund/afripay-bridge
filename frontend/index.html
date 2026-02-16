@@ -28,6 +28,12 @@ h2 { text-align:center; color:#1abc9c; }
     <button id="createWallet">Create Wallet</button>
   </div>
 </div>
+<div id="sendSection" style="display:none;">
+  <h3>Send Money</h3>
+  <input type="text" id="toEmail" placeholder="Recipient Email">
+  <input type="number" id="amount" placeholder="Amount">
+  <button id="sendBtn">Send Money</button>
+</div>
 
 <script type="module">
 import { auth, db } from "./firebase.js";
@@ -88,6 +94,47 @@ createWalletBtn.addEventListener("click", async () => {
     alert("Wallet created successfully!");
   } catch(e){ alert(e.message); }
 });
+  import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const sendSection = document.getElementById("sendSection");
+const toEmail = document.getElementById("toEmail");
+const amountInput = document.getElementById("amount");
+const sendBtn = document.getElementById("sendBtn");
+
+// Show send section when logged in
+onAuthStateChanged(auth, async (user) => {
+  if (user) sendSection.style.display = "block";
+  else sendSection.style.display = "none";
+});
+
+// Send money
+sendBtn.addEventListener("click", async () => {
+  try {
+    const recipientEmail = toEmail.value;
+    const amount = parseFloat(amountInput.value);
+
+    // Find recipient UID
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where("email", "==", recipientEmail));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) return alert("Recipient not found");
+    const toUid = querySnapshot.docs[0].id;
+
+    const response = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/sendMoney`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromUid: auth.currentUser.uid, toUid: toUid, amount: amount })
+    });
+
+    const result = await response.json();
+    if (result.success) alert("Money sent successfully!");
+    else alert(result.error);
+  } catch (e) {
+    alert(e.message);
+  }
+});
+
 </script>
 </body>
 </html>
