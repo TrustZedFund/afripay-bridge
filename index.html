@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AfriPay Bridge</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f4f6f8; margin:0; padding:0; }
+.container { max-width:500px; margin:50px auto; background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1);}
+input, button { width:100%; padding:10px; margin:10px 0; border-radius:5px; border:1px solid #ccc; }
+button { background:#1abc9c; color:white; border:none; cursor:pointer; }
+button:hover { background:#16a085; }
+h2 { text-align:center; color:#1abc9c; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>AfriPay Bridge</h2>
+  
+  <input type="text" id="name" placeholder="Full Name">
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+  <button id="signup">Sign Up</button>
+  <button id="login">Login</button>
+  
+  <div id="walletSection" style="display:none;">
+    <h3>Your Wallets</h3>
+    <p id="walletInfo">Loading...</p>
+    <button id="createWallet">Create USD Wallet</button>
+  </div>
+
+  <div id="sendSection" style="display:none;">
+    <h3>Send Money</h3>
+    <input type="text" id="toEmail" placeholder="Recipient Email">
+    <input type="number" id="amount" placeholder="Amount">
+    <button id="sendBtn">Send Money</button>
+  </div>
+
+  <div id="cryptoSection" style="display:none;">
+    <h3>Crypto Wallet</h3>
+    <input type="text" id="cryptoCurrency" placeholder="Currency (BTC/USDT)">
+    <input type="number" id="cryptoAmount" placeholder="Amount">
+    <button id="depositBtn">Deposit Crypto</button>
+    <button id="withdrawBtn">Withdraw Crypto</button>
+  </div>
+</div>
+
+<script type="module">
+import { auth, db } from "./firebase.js";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+import { doc, setDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+// DOM elements
+const nameInput = document.getElementById("name");
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+const signupBtn = document.getElementById("signup");
+const loginBtn = document.getElementById("login");
+const walletSection = document.getElementById("walletSection");
+const walletInfo = document.getElementById("walletInfo");
+const createWalletBtn = document.getElementById("createWallet");
+
+const sendSection = document.getElementById("sendSection");
+const toEmail = document.getElementById("toEmail");
+const amountInput = document.getElementById("amount");
+const sendBtn = document.getElementById("sendBtn");
+
+const cryptoSection = document.getElementById("cryptoSection");
+const cryptoCurrency = document.getElementById("cryptoCurrency");
+const cryptoAmount = document.getElementById("cryptoAmount");
+const depositBtn = document.getElementById("depositBtn");
+const withdrawBtn = document.getElementById("withdrawBtn");
+
+// -------------------- SIGNUP --------------------
+signupBtn.addEventListener("click", async () => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
+    const user = userCredential.user;
+
+    // Automatically create Firestore user document
+    await setDoc(doc(db, "users", user.uid), {
+      name: nameInput.value || "",
+      email: user.email,
+      kycStatus: "pending",
+      createdAt: serverTimestamp()
+    });
+
+    alert("Signup successful!");
+  } catch(e) { alert(e.message); }
+});
+
+// -------------------- LOGIN --------------------
+loginBtn.addEventListener("click", async () => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
+    alert("Login successful!");
+  } catch(e) { alert(e.message); }
+});
+
+// -------------------- AUTH STATE --------------------
+onAuthStateChanged(auth, async (user) => {
+  if(user){
+    walletSection.style.display = "block";
+    sendSection.style.display = "block";
+    cryptoSection.style.display = "block";
+
+    // Check if USD wallet exists
+    const q = query(collection(db,"wallets"), where("userId","==",user.uid), where("currency","==","USD"));
+    const querySnapshot = await getDocs(q);
+    if(querySnapshot.empty){
+      walletInfo.textContent = "No USD wallet found. Click below to create one.";
+    } else {
+      walletInfo.textContent = "Wallet exists. You can send/receive money.";
+    }
+  } else {
+    walletSection.style.display = "none";
+    sendSection.style.display = "none";
+    cryptoSection.style.display = "none";
+  }
+});
+
+// -------------------- CREATE USD WALLET --------------------
+createWalletBtn.addEventListener("click", async () => {
+  try {
+    const user = auth.currentUser;
+    if(!user) return alert("Login first");
+
+    const walletRef = doc(db, "wallets", `${user.uid}_usd`);
+    await setDoc(walletRef, {
+      userId: user.uid,
+      currency: "USD",
+      balance: 0,
+      isCrypto: false,
+      createdAt: serverTimestamp()
+    });
+
+    alert("USD Wallet created!");
+    walletInfo.textContent = "Wallet exists. You can send/receive money.";
+  } catch(e){ alert(e.message); }
+});
+
+// -------------------- SEND MONEY --------------------
+sendBtn.addEventListener("click", async () => {
+  try {
+    const recipientEmail = toEmail.value;
+    const amount = parseFloat(amountInput.value);
+    const user = auth.currentUser;
+    if(!user) return alert("Login first");
+
+    // Find recipient UID
+    const q = query(collection(db,"users"), where("email","==",recipientEmail));
+    const querySnapshot = await getDocs(q);
+    if(querySnapshot.empty) return alert("Recipient not found");
+    const toUid = querySnapshot.docs[0].id;
+
+    // Call Cloud Function
+    const response = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/sendMoney`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ fromUid: user.uid, toUid, amount })
+    });
+    const result = await response.json();
+    if(result.success) alert("Money sent!");
+    else alert(result.error);
+  } catch(e){ alert(e.message); }
+});
+
+// -------------------- CRYPTO DEPOSIT --------------------
+depositBtn.addEventListener("click", async ()=>{
+  try{
+    const user = auth.currentUser;
+    if(!user) return alert("Login first");
+
+    const res = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/cryptoDeposit`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({uid:user.uid, amount:parseFloat(cryptoAmount.value), currency:cryptoCurrency.value})
+    });
+    const data = await res.json();
+    if(data.success) alert(data.message);
+    else alert(data.error);
+  } catch(e){ alert(e.message); }
+});
+
+// -------------------- CRYPTO WITHDRAW --------------------
+withdrawBtn.addEventListener("click", async ()=>{
+  try{
+    const user = auth.currentUser;
+    if(!user) return alert("Login first");
+
+    const res = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/cryptoWithdraw`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({uid:user.uid, amount:parseFloat(cryptoAmount.value), currency:cryptoCurrency.value})
+    });
+    const data = await res.json();
+    if(data.success) alert(data.message);
+    else alert(data.error);
+  } catch(e){ alert(e.message); }
+});
+</script>
+</body>
+</html>
