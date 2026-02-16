@@ -5,75 +5,76 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AfriPay Bridge Dashboard</title>
 <style>
-body { font-family: Arial,sans-serif; background:#f4f6f8; margin:0; padding:0; }
+body { margin:0; font-family: 'Segoe UI', sans-serif; background:#f0f2f5; color:#1a1a1a; }
 header { background:#1abc9c; color:white; padding:20px; text-align:center; }
-.container { max-width:800px; margin:20px auto; background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1);}
-h2, h3 { color:#1abc9c; }
-.wallets, .transactions { margin-bottom:30px; }
-.wallets table, .transactions table { width:100%; border-collapse: collapse; }
-.wallets th, .wallets td, .transactions th, .transactions td { padding:10px; border:1px solid #ddd; text-align:center; }
-input, select, button { padding:10px; margin:5px 0; border-radius:5px; border:1px solid #ccc; width:100%; }
-button { background:#1abc9c; color:white; border:none; cursor:pointer; }
+header h1 { margin:0; font-size:1.8em; }
+header p { margin:5px 0 0; font-size:0.9em; }
+.container { max-width:1000px; margin:20px auto; padding:20px; }
+section { margin-bottom:30px; }
+h2 { color:#1abc9c; margin-bottom:15px; }
+.wallets { display:flex; gap:20px; flex-wrap:wrap; }
+.wallet-card { background:white; flex:1 1 200px; padding:20px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.05); text-align:center; transition: transform 0.2s; }
+.wallet-card:hover { transform: translateY(-5px); }
+.wallet-card h3 { margin:0; font-size:1.2em; }
+.wallet-card p { margin:5px 0 0; font-size:1.5em; font-weight:bold; }
+
+.send, .crypto { background:white; padding:20px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.05); margin-bottom:20px; }
+input, select, button { padding:10px; margin:5px 0; border-radius:8px; border:1px solid #ccc; width:100%; }
+button { background:#1abc9c; color:white; border:none; cursor:pointer; font-weight:bold; transition: background 0.2s; }
 button:hover { background:#16a085; }
+
+.transactions table { width:100%; border-collapse: collapse; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.05); }
+.transactions th, .transactions td { padding:12px; border-bottom:1px solid #eee; text-align:center; }
+.transactions th { background:#f7f9fa; color:#1abc9c; }
+.transactions tr:last-child td { border-bottom:none; }
+
+.total-balance { background:#16a085; color:white; padding:20px; border-radius:12px; text-align:center; margin-bottom:20px; font-size:1.2em; font-weight:bold; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>AfriPay Bridge Dashboard</h1>
+  <h1>AfriPay Bridge</h1>
   <p id="userEmail">Loading user...</p>
   <button id="logoutBtn">Logout</button>
 </header>
 
 <div class="container">
 
-  <!-- Wallets -->
-  <div class="wallets">
-    <h2>Your Wallets</h2>
-    <table id="walletTable">
-      <thead>
-        <tr>
-          <th>Currency</th>
-          <th>Balance</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <button id="createUSDWallet">Create USD Wallet</button>
-    <button id="createBTCWallet">Create BTC Wallet</button>
+  <div class="total-balance" id="totalBalance">
+    Total Balance: $0
   </div>
 
+  <!-- Wallets -->
+  <section>
+    <h2>Your Wallets</h2>
+    <div class="wallets" id="walletCards"></div>
+    <button id="createUSDWallet">Create USD Wallet</button>
+    <button id="createBTCWallet">Create BTC Wallet</button>
+  </section>
+
   <!-- Send Money -->
-  <div class="sendMoney">
+  <section class="send">
     <h2>Send Money</h2>
     <input type="email" id="toEmail" placeholder="Recipient Email">
     <input type="number" id="amount" placeholder="Amount">
-    <select id="fromCurrency">
-      <option value="USD">USD</option>
-      <option value="ZMW">ZMW</option>
-      <option value="NGN">NGN</option>
-      <option value="BTC">BTC</option>
-    </select>
-    <select id="toCurrency">
-      <option value="USD">USD</option>
-      <option value="ZMW">ZMW</option>
-      <option value="NGN">NGN</option>
-      <option value="BTC">BTC</option>
-    </select>
+    <select id="fromCurrency"></select>
+    <select id="toCurrency"></select>
+    <p>Converted Amount: <span id="convertedPreview">0</span></p>
     <button id="sendBtn">Send Money</button>
-  </div>
+  </section>
 
   <!-- Crypto Deposit/Withdraw -->
-  <div class="crypto">
+  <section class="crypto">
     <h2>Crypto Wallet</h2>
     <input type="text" id="cryptoCurrency" placeholder="Currency (BTC/USDT)">
     <input type="number" id="cryptoAmount" placeholder="Amount">
     <button id="depositBtn">Deposit Crypto</button>
     <button id="withdrawBtn">Withdraw Crypto</button>
-  </div>
+  </section>
 
   <!-- Transaction History -->
-  <div class="transactions">
+  <section class="transactions">
     <h2>Transaction History</h2>
     <table id="txTable">
       <thead>
@@ -89,61 +90,80 @@ button:hover { background:#16a085; }
       </thead>
       <tbody></tbody>
     </table>
-  </div>
+  </section>
 
 </div>
 
 <script type="module">
 import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-import { doc, setDoc, collection, query, where, getDocs, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+import { doc, setDoc, collection, query, where, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
-// DOM Elements
+// DOM
 const userEmail = document.getElementById("userEmail");
-const walletTable = document.querySelector("#walletTable tbody");
-const txTable = document.querySelector("#txTable tbody");
+const walletCards = document.getElementById("walletCards");
 const createUSDWallet = document.getElementById("createUSDWallet");
 const createBTCWallet = document.getElementById("createBTCWallet");
 
 const toEmail = document.getElementById("toEmail");
 const amountInput = document.getElementById("amount");
-const fromCurrency = document.getElementById("fromCurrency");
-const toCurrency = document.getElementById("toCurrency");
+const fromCurrencySelect = document.getElementById("fromCurrency");
+const toCurrencySelect = document.getElementById("toCurrency");
 const sendBtn = document.getElementById("sendBtn");
+const convertedPreview = document.getElementById("convertedPreview");
 
 const cryptoCurrency = document.getElementById("cryptoCurrency");
 const cryptoAmount = document.getElementById("cryptoAmount");
 const depositBtn = document.getElementById("depositBtn");
 const withdrawBtn = document.getElementById("withdrawBtn");
 
+const txTable = document.querySelector("#txTable tbody");
+const totalBalance = document.getElementById("totalBalance");
+
 const logoutBtn = document.getElementById("logoutBtn");
+
+// -------------------- Exchange rates --------------------
+const exchangeRates = {
+  "USD-ZMW":22,"USD-NGN":460,"ZMW-USD":0.045,"NGN-USD":0.0022,
+  "BTC-USD":30000,"USD-BTC":0.000033
+};
 
 // -------------------- AUTH --------------------
 let currentUser;
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async (user)=>{
   if(user){
     currentUser = user;
     userEmail.textContent = user.email;
     await loadWallets();
     await loadTransactions();
-  } else {
-    location.href = "./index.html";
-  }
+    populateCurrencySelectors();
+  } else location.href="./index.html";
 });
 
 logoutBtn.addEventListener("click", ()=> signOut(auth));
 
 // -------------------- LOAD WALLETS --------------------
 async function loadWallets(){
-  walletTable.innerHTML = "";
+  walletCards.innerHTML = "";
   const q = query(collection(db,"wallets"), where("userId","==",currentUser.uid));
   const snapshot = await getDocs(q);
+
+  let totalUSD = 0;
+
   snapshot.forEach(docSnap=>{
     const data = docSnap.data();
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${data.currency}</td><td>${data.balance}</td>`;
-    walletTable.appendChild(tr);
+    const card = document.createElement("div");
+    card.className="wallet-card";
+    card.innerHTML = `<h3>${data.currency}</h3><p>${data.balance.toFixed(4)}</p>`;
+    walletCards.appendChild(card);
+
+    // Calculate total balance in USD
+    let rate = 1;
+    if(data.currency!=="USD") rate = exchangeRates[`${data.currency}-USD`]||1;
+    totalUSD += data.balance * rate;
   });
+
+  totalBalance.textContent = `Total Balance (USD): $${totalUSD.toFixed(2)}`;
 }
 
 // -------------------- CREATE WALLET --------------------
@@ -158,11 +178,32 @@ async function createWallet(currency){
   });
   await loadWallets();
 }
-
 createUSDWallet.addEventListener("click", ()=>createWallet("USD"));
 createBTCWallet.addEventListener("click", ()=>createWallet("BTC"));
 
 // -------------------- SEND MONEY --------------------
+function populateCurrencySelectors(){
+  const currencies=["USD","ZMW","NGN","BTC"];
+  fromCurrencySelect.innerHTML="";
+  toCurrencySelect.innerHTML="";
+  currencies.forEach(c=>{
+    fromCurrencySelect.innerHTML+=`<option value="${c}">${c}</option>`;
+    toCurrencySelect.innerHTML+=`<option value="${c}">${c}</option>`;
+  });
+}
+
+fromCurrencySelect.addEventListener("change", updatePreview);
+toCurrencySelect.addEventListener("change", updatePreview);
+amountInput.addEventListener("input", updatePreview);
+
+function updatePreview(){
+  const amount = parseFloat(amountInput.value)||0;
+  const fromC = fromCurrencySelect.value;
+  const toC = toCurrencySelect.value;
+  const rate = exchangeRates[`${fromC}-${toC}`]||1;
+  convertedPreview.textContent = (amount*rate).toFixed(4);
+}
+
 sendBtn.addEventListener("click", async ()=>{
   try{
     const recipientEmail = toEmail.value;
@@ -181,8 +222,8 @@ sendBtn.addEventListener("click", async ()=>{
         fromUid: currentUser.uid,
         toUid: toUid,
         amount: amount,
-        fromCurrency: fromCurrency.value,
-        toCurrency: toCurrency.value
+        fromCurrency: fromCurrencySelect.value,
+        toCurrency: toCurrencySelect.value
       })
     });
     const data = await res.json();
@@ -230,8 +271,8 @@ withdrawBtn.addEventListener("click", async ()=>{
 
 // -------------------- LOAD TRANSACTIONS --------------------
 async function loadTransactions(){
-  txTable.innerHTML = "";
-  const q = query(collection(db,"transactions"), where("fromUser","==",currentUser.uid), orderBy("createdAt","desc"));
+  txTable.innerHTML="";
+  const q = query(collection(db,"transactions"), where("fromUser","==",currentUser.uid));
   const snapshot = await getDocs(q);
   snapshot.forEach(docSnap=>{
     const data = docSnap.data();
