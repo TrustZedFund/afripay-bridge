@@ -75,3 +75,96 @@ exports.sendMoney = functions.https.onRequest(async (req, res) => {
     return res.status(500).send({ error: e.message });
   }
 });
+// Crypto Deposit
+exports.cryptoDeposit = functions.https.onRequest(async (req, res) => {
+  try {
+    const { uid, amount, currency } = req.body;
+    if (!uid || !amount || !currency) return res.status(400).send({error:"Missing parameters"});
+
+    const walletQuery = await db.collection("wallets")
+      .where("userId","==",uid)
+      .where("currency","==",currency)
+      .limit(1)
+      .get();
+
+    let walletRef;
+    if(walletQuery.empty){
+      // Create crypto wallet if not exists
+      walletRef = db.collection("wallets").doc();
+      await walletRef.set({
+        userId: uid,
+        currency: currency,
+        balance: 0,
+        isCrypto: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      walletRef = walletQuery.docs[0].ref;
+    }
+
+    // Update balance atomically
+    await db.runTransaction(async (t)=>{
+      const walletDoc = await t.get(walletRef);
+      const newBalance = walletDoc.data().balance + amount;
+      t.update(walletRef,{balance:newBalance});
+
+      const txRef = db.collection("transactions").doc();
+      t.set(txRef,{
+        fromUser: uid,
+        toUser: null,
+        amount: amount,
+        fee:0,
+        netAmount: amount,
+        currency: currency,
+        type:"cryptoDeposit",
+        status:"completed",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    return res.send({success:true, message:`${amount} ${currency} deposited.`});
+  } catch(e){console.error(e); return res.status(500).send({error:e.message});}
+});
+
+// Crypto Withdraw
+exports.cryptoWithdraw = functions.https.onRequest(async (req,res)=>{
+  try{
+    const { uid, amount, currency } = req.body;
+    if(!uid || !amount || !currency) return res.status(400).send({error:"Missing parameters"});
+
+    const walletQuery = await db.collection("wallets")
+      .where("userId","==",uid)
+      .where("currency","==",currency)
+      .limit(1)
+      .get();
+
+    if(walletQuery.empty) return res.status(400).send({error:"Wallet not found"});
+
+    const walletRef = walletQuery.docs[0].ref;
+
+    await db.runTransaction(async (t)=>{
+      const walletDoc = await t.get(walletRef);
+      if(walletDoc.data().balance < amount) throw new Error("Insufficient balance");
+      const fee = Math.max(amount*0.01, 0.0001); // 1% fee for crypto withdraw
+      const netAmount = amount - fee;
+
+      t.update(walletRef,{balance: walletDoc.data().balance - amount});
+
+      const txRef = db.collection("transactions").doc();
+      t.set(txRef,{
+        fromUser: uid,
+        toUser: null,
+        amount: amount,
+        fee: fee,
+        netAmount: netAmount,
+        currency: currency,
+        type:"cryptoWithdraw",
+        status:"completed",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    return res.send({success:true, message:`${amount} ${currency} withdrawn.`});
+
+  }catch(e){console.error(e); return res.status(500).send({error:e.message});}
+});
