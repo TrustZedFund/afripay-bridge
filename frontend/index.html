@@ -34,6 +34,13 @@ h2 { text-align:center; color:#1abc9c; }
   <input type="number" id="amount" placeholder="Amount">
   <button id="sendBtn">Send Money</button>
 </div>
+<div id="cryptoSection" style="display:none;">
+  <h3>Crypto Wallet</h3>
+  <input type="text" id="cryptoCurrency" placeholder="Currency (BTC/USDT)">
+  <input type="number" id="cryptoAmount" placeholder="Amount">
+  <button id="depositBtn">Deposit Crypto</button>
+  <button id="withdrawBtn">Withdraw Crypto</button>
+</div>
 
 <script type="module">
 import { auth, db } from "./firebase.js";
@@ -133,6 +140,44 @@ sendBtn.addEventListener("click", async () => {
   } catch (e) {
     alert(e.message);
   }
+});
+const cryptoSection = document.getElementById("cryptoSection");
+const cryptoCurrency = document.getElementById("cryptoCurrency");
+const cryptoAmount = document.getElementById("cryptoAmount");
+const depositBtn = document.getElementById("depositBtn");
+const withdrawBtn = document.getElementById("withdrawBtn");
+
+onAuthStateChanged(auth, user => {
+  if(user) cryptoSection.style.display = "block";
+  else cryptoSection.style.display = "none";
+});
+
+// Deposit crypto
+depositBtn.addEventListener("click", async ()=>{
+  try{
+    const res = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/cryptoDeposit`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({uid: auth.currentUser.uid, amount:parseFloat(cryptoAmount.value), currency:cryptoCurrency.value})
+    });
+    const data = await res.json();
+    if(data.success) alert(data.message);
+    else alert(data.error);
+  }catch(e){alert(e.message);}
+});
+
+// Withdraw crypto
+withdrawBtn.addEventListener("click", async ()=>{
+  try{
+    const res = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/cryptoWithdraw`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({uid: auth.currentUser.uid, amount:parseFloat(cryptoAmount.value), currency:cryptoCurrency.value})
+    });
+    const data = await res.json();
+    if(data.success) alert(data.message);
+    else alert(data.error);
+  }catch(e){alert(e.message);}
 });
 
 </script>
