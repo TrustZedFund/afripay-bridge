@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AfriPay Bridge</title>
+<style>
+body { font-family: Arial, sans-serif; background:#f4f6f8; margin:0; padding:0; }
+.container { max-width:500px; margin:50px auto; background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1);}
+input, button { width:100%; padding:10px; margin:10px 0; border-radius:5px; border:1px solid #ccc; }
+button { background:#1abc9c; color:white; border:none; cursor:pointer; }
+button:hover { background:#16a085; }
+h2 { text-align:center; color:#1abc9c; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>AfriPay Bridge</h2>
+  
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+  <button id="signup">Sign Up</button>
+  <button id="login">Login</button>
+  
+  <div id="walletSection" style="display:none;">
+    <h3>Your Wallet</h3>
+    <p id="walletInfo">Loading...</p>
+    <button id="createWallet">Create Wallet</button>
+  </div>
+</div>
+
+<script type="module">
+import { auth, db } from "./firebase.js";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+import { collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+const signupBtn = document.getElementById("signup");
+const loginBtn = document.getElementById("login");
+const walletSection = document.getElementById("walletSection");
+const walletInfo = document.getElementById("walletInfo");
+const createWalletBtn = document.getElementById("createWallet");
+
+// Sign up
+signupBtn.addEventListener("click", async () => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
+    alert("Signup successful!");
+  } catch(e) { alert(e.message); }
+});
+
+// Login
+loginBtn.addEventListener("click", async () => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value);
+    alert("Login successful!");
+  } catch(e) { alert(e.message); }
+});
+
+// Show wallet section when logged in
+onAuthStateChanged(auth, async (user) => {
+  if(user){
+    walletSection.style.display = "block";
+    // Check if wallet exists
+    const q = query(collection(db, "wallets"), where("userId", "==", user.uid));
+    const querySnapshot = await getDocs(q);
+    if(querySnapshot.empty){
+      walletInfo.textContent = "No wallet found. Create one.";
+    } else {
+      walletInfo.textContent = "Wallet exists. You can send/receive money.";
+    }
+  } else {
+    walletSection.style.display = "none";
+  }
+});
+
+// Wallet creation
+createWalletBtn.addEventListener("click", async () => {
+  try {
+    const createWalletFn = "createWallet"; // Cloud Function name
+    const walletRef = await fetch(`https://us-central1-afripay-bridge.cloudfunctions.net/${createWalletFn}`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({currency:"USD", uid:auth.currentUser.uid})
+    });
+    const res = await walletRef.json();
+    alert("Wallet created successfully!");
+  } catch(e){ alert(e.message); }
+});
+</script>
+</body>
+</html>
